@@ -39,10 +39,21 @@
     .topbar-nav a:hover { color: var(--text-primary); }
     .topbar-badge { background: var(--accent-dim); color: var(--accent); font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: var(--radius-pill); border: 1px solid rgba(232,213,176,0.2); letter-spacing: 0.04em; }
 
-    /* WORKER CONFIG NOTICE */
-    #worker-notice { background: rgba(96,165,250,0.06); border-bottom: 1px solid rgba(96,165,250,0.15); padding: 0.6rem 2rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; font-size: 12px; color: rgba(96,165,250,0.7); }
-    #worker-notice code { font-family: 'JetBrains Mono', monospace; font-size: 11px; background: rgba(96,165,250,0.1); padding: 1px 6px; border-radius: 4px; color: var(--blue); }
-    #worker-notice.configured { background: rgba(62,207,170,0.05); border-bottom-color: rgba(62,207,170,0.12); color: rgba(62,207,170,0.6); display: none; }
+    /* API KEY BANNER */
+    #api-banner { border-bottom: 1px solid var(--border); padding: 0.75rem 2rem; display: flex; align-items: center; justify-content: center; gap: 1rem; flex-wrap: wrap; }
+    #api-banner.no-key { background: rgba(232,213,176,0.05); border-bottom-color: rgba(232,213,176,0.15); }
+    #api-banner.has-key { background: rgba(62,207,170,0.04); border-bottom-color: rgba(62,207,170,0.12); }
+    .api-banner-label { font-size: 13px; color: var(--text-secondary); }
+    .api-banner-label strong { color: var(--accent); }
+    .api-key-form { display: flex; align-items: center; gap: 8px; }
+    .api-key-input { background: var(--bg-subtle); border: 1px solid var(--border-hover); border-radius: var(--radius-sm); padding: 6px 12px; color: var(--text-primary); font-size: 13px; font-family: 'JetBrains Mono', monospace; width: 260px; outline: none; transition: border-color 0.15s; }
+    .api-key-input:focus { border-color: var(--accent); }
+    .api-key-input::placeholder { color: var(--text-muted); font-family: 'DM Sans', sans-serif; font-size: 12px; }
+    .btn-save-key { background: var(--accent); color: #0d0d0f; border: none; border-radius: var(--radius-sm); padding: 7px 14px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: opacity 0.15s; }
+    .btn-save-key:hover { opacity: 0.85; }
+    .btn-clear-key { background: transparent; color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 10px; font-size: 12px; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.15s; }
+    .btn-clear-key:hover { border-color: var(--border-hover); color: var(--red); }
+    #banner-confirmed { font-size: 12px; color: var(--teal); }
 
     /* HERO */
     .hero { position: relative; padding: 5rem 2rem 4rem; text-align: center; overflow: hidden; }
@@ -225,9 +236,17 @@
   </div>
 </header>
 
-<!-- WORKER NOTICE -->
-<div id="worker-notice">
-  ⚙️ Contenu généré via Cloudflare Worker — remplacer <code>WORKER_URL</code> dans le JS par l'URL de votre Worker déployé.
+<!-- API KEY BANNER -->
+<div id="api-banner" class="no-key">
+  <span class="api-banner-label" id="banner-label"><strong>Clé API Anthropic</strong> — requise pour générer les contenus de leçon.</span>
+  <div class="api-key-form" id="banner-form">
+    <input type="password" class="api-key-input" id="api-key-input"
+      placeholder="Coller votre clé  sk-ant-api03-…"
+      autocomplete="off" spellcheck="false"
+      onkeydown="if(event.key==='Enter') saveApiKey()" />
+    <button class="btn-save-key" onclick="saveApiKey()">Enregistrer</button>
+  </div>
+  <span id="banner-confirmed" style="display:none">✓ Clé active — <button class="btn-clear-key" onclick="clearApiKey()">Effacer</button></span>
 </div>
 
 <!-- HERO -->
@@ -630,27 +649,54 @@ function buildNav() {
 }
 
 // ════════════════════════════
-// CONFIG — à modifier après déploiement du Worker
+// API KEY — session storage
 // ════════════════════════════
-// 1. Déployez worker.js sur Cloudflare Workers (cf. README dans le repo)
-// 2. Remplacez la valeur ci-dessous par l'URL de votre Worker :
-//    ex : 'https://academie-claude.votre-nom.workers.dev'
-const WORKER_URL = 'https://square-dawn-6270.julien-mauduit.workers.dev';
+function saveApiKey() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val || !val.startsWith('sk-')) return;
+  sessionStorage.setItem('ac_key', val);
+  document.getElementById('api-key-input').value = '';
+  updateBanner();
+}
+function clearApiKey() {
+  sessionStorage.removeItem('ac_key');
+  updateBanner();
+}
+function getApiKey() { return sessionStorage.getItem('ac_key') || ''; }
+function updateBanner() {
+  const key = getApiKey();
+  const banner = document.getElementById('api-banner');
+  const form   = document.getElementById('banner-form');
+  const conf   = document.getElementById('banner-confirmed');
+  const label  = document.getElementById('banner-label');
+  if (key) {
+    banner.className = 'has-key';
+    form.style.display = 'none';
+    label.style.display = 'none';
+    conf.style.display = 'inline-flex';
+    conf.style.alignItems = 'center';
+    conf.style.gap = '8px';
+  } else {
+    banner.className = 'no-key';
+    form.style.display = 'flex';
+    label.style.display = 'block';
+    conf.style.display = 'none';
+  }
+}
 
 // ════════════════════════════
-// API CALL — via Cloudflare Worker (streaming)
+// API CALL — direct Anthropic (streaming)
 // ════════════════════════════
 async function generateContent(lessonName, course, idx) {
   const contentEl = document.getElementById('lesson-content');
   document.getElementById('lesson-nav').innerHTML = '';
 
-  // Vérification de configuration
-  if (!WORKER_URL || WORKER_URL === 'WORKER_URL') {
+  const apiKey = getApiKey();
+  if (!apiKey) {
     contentEl.innerHTML = `<div class="no-key-warn">
-      <strong>Worker non configuré</strong>
-      Déployez <code>worker.js</code> sur Cloudflare Workers et remplacez <code>WORKER_URL</code>
-      dans le fichier <code>index.html</code> par l'URL de votre Worker.
-      Consultez le <code>README.md</code> du repo pour les instructions détaillées.
+      <strong>Clé API manquante</strong>
+      Entrez votre clé API Anthropic dans la bannière en haut de page pour débloquer les leçons.
+      Votre clé est conservée uniquement en mémoire de session — elle disparaît à la fermeture de l'onglet.
     </div>`;
     return;
   }
@@ -660,25 +706,44 @@ async function generateContent(lessonName, course, idx) {
     <div class="loading-label">Claude génère le contenu de la leçon…</div>
   </div>`;
 
+  const system = `Tu es un formateur expert en IA, spécialisé sur Claude et l'écosystème Anthropic. Tu rédiges des leçons de formation claires, structurées et engageantes en français pour des professionnels (chefs de projet, développeurs, directeurs d'agence). Tes leçons sont pédagogiques, pratiques, avec des exemples concrets. Utilise le markdown : titres ##/###, **gras**, listes à puces, blocs de code si pertinent. Vise 700-900 mots. Commence directement par le contenu, sans répéter le titre.`;
+
+  const prompt = `Rédige le contenu complet de la leçon suivante :
+
+Cours : "${course.title}" (niveau : ${course.level})
+Leçon ${idx+1}/${course.lessonsList.length} : "${lessonName}"
+Durée estimée : ${course.lessonsList[idx].dur}
+Description du cours : ${course.desc}
+
+Structure attendue :
+1. Introduction courte et accroche (pourquoi cette leçon est importante)
+2. Contenu principal avec sous-sections claires (##)
+3. Exemples pratiques concrets (avec du code si pertinent)
+4. Points clés à retenir (liste à puces)
+5. Un exercice ou mise en pratique immédiate`;
+
   try {
-    const resp = await fetch(WORKER_URL + '/generate', {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
       body: JSON.stringify({
-        courseTitle:  course.title,
-        courseLevel:  course.level,
-        courseDesc:   course.desc,
-        lessonName:   lessonName,
-        lessonIdx:    idx,
-        lessonTotal:  course.lessonsList.length,
-        lessonDur:    course.lessonsList[idx].dur,
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1500,
+        system,
+        messages: [{ role: 'user', content: prompt }],
+        stream: true
       })
     });
 
     if (!resp.ok) {
-      let msg = 'Erreur inconnue.';
+      let msg = 'Vérifiez votre clé API.';
       try { const e = await resp.json(); msg = e.error?.message || msg; } catch {}
-      contentEl.innerHTML = `<div class="no-key-warn"><strong>Erreur Worker (${resp.status})</strong> ${msg}</div>`;
+      contentEl.innerHTML = `<div class="no-key-warn"><strong>Erreur API (${resp.status})</strong> ${msg}</div>`;
       return;
     }
 
@@ -753,10 +818,7 @@ document.addEventListener('keydown', e => {
 // INIT
 // ════════════════════════════
 renderCourses('all');
-// Masquer la notice si le Worker est configuré
-if (WORKER_URL && WORKER_URL !== 'WORKER_URL') {
-  document.getElementById('worker-notice').style.display = 'none';
-}
+updateBanner();
 </script>
 </body>
 </html>
